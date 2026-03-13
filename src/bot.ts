@@ -4,7 +4,13 @@ import { db } from './firebase';
 const token = '8555470613:AAEg-CgGbYtm1yuxnzEwY3_nA4jmKGJHJJo';
 const bot = new TelegramBot(token, { polling: true });
 
+bot.on('polling_error', (error) => {
+  console.error('Polling error:', error);
+});
+
 const ADMIN_USERNAME = 'Trim_peek';
+
+const pendingClanCreations = new Map<number, { name: string, tag: string }>();
 
 // Helper functions
 const getUser = async (userId: number) => {
@@ -29,28 +35,34 @@ const updateUser = async (userId: number, data: any) => {
 bot.on('message', async (msg) => {
   if (!msg.text || !msg.text.startsWith('/')) return;
 
-  const settingsSnap = await db.ref('settings').once('value');
-  const settings = settingsSnap.val() || {};
-
-  const isCmd = msg.text.startsWith('/');
-  const isAdmin = msg.from?.username === ADMIN_USERNAME;
-
-  if (isCmd && !isAdmin) {
-    if (settings.bot_disabled) {
-      bot.sendMessage(msg.chat.id, '🛠 Бот на тех.перерыве');
-      return;
-    }
-    if (settings.test_mode) {
-      bot.sendMessage(msg.chat.id, '🔧 Бот на тестовом осмотре');
-      return;
-    }
-  }
-
-  // Handle commands
-  const args = msg.text.split(' ');
-  const cmd = args[0].toLowerCase();
-
   try {
+    const settingsSnap = await Promise.race([
+      db.ref('settings').once('value'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 5000))
+    ]) as any;
+    const settings = settingsSnap.val() || {};
+
+    const isCmd = msg.text.startsWith('/');
+    const isAdmin = msg.from?.username === ADMIN_USERNAME;
+
+    if (isCmd && !isAdmin) {
+      if (settings.bot_disabled) {
+        bot.sendMessage(msg.chat.id, '🛠 Бот на тех.перерыве');
+        return;
+      }
+      if (settings.test_mode) {
+        bot.sendMessage(msg.chat.id, '🔧 Бот на тестовом осмотре');
+        return;
+      }
+    }
+
+    // Handle commands
+    const args = msg.text.split(' ');
+    let cmd = args[0].toLowerCase();
+    if (cmd.includes('@')) {
+      cmd = cmd.split('@')[0];
+    }
+
     if (cmd === '/создать' && args[1] === 'клан') {
       await createClan(msg, args.slice(2));
     } else if (cmd === '/вступить') {
@@ -143,27 +155,35 @@ async function createClan(msg: TelegramBot.Message, args: string[]) {
     return;
   }
 
-  const tag = args.pop();
+  const tag = args.pop()!;
   const name = args.join(' ');
 
-  const clanId = db.ref('clans').push().key!;
-  
-  await db.ref(`clans/${clanId}`).set({
-    name,
-    tag,
-    leaderId: userId,
-    members: { [userId]: { role: 'leader' } },
-    treasury: 0,
-    weapons: 0,
-    capitalHp: 10000,
-    level: 1,
-    experience: 0,
-    populationLimit: 15
-  });
+  const nameSnap = await db.ref('clans').orderByChild('name').equalTo(name).once('value');
+  if (nameSnap.exists()) {
+    bot.sendMessage(msg.chat.id, 'Клан с таким названием уже существует.');
+    return;
+  }
 
-  await updateUser(userId, { clanId, role: 'leader', contribution: 0 });
+  const tagSnap = await db.ref('clans').orderByChild('tag').equalTo(tag).once('value');
+  if (tagSnap.exists()) {
+    bot.sendMessage(msg.chat.id, 'Клан с таким тегом уже существует.');
+    return;
+  }
 
-  bot.sendMessage(msg.chat.id, `Клан ${name} [${tag}] успешно создан! Вы лидер.`);
+  pendingClanCreations.set(userId, { name, tag });
+
+  const opts = {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '✅ Да, создать', callback_data: 'confirm_create_clan' },
+          { text: '❌ Отмена', callback_data: 'cancel_create_clan' }
+        ]
+      ]
+    }
+  };
+
+  bot.sendMessage(msg.chat.id, `Будет создан клан ${name} [${tag}]. Вы уверены?`, opts);
 }
 
 async function joinClan(msg: TelegramBot.Message, args: string[]) {
@@ -187,6 +207,13 @@ async function joinClan(msg: TelegramBot.Message, args: string[]) {
   if (!targets) {
     snapshot = await db.ref('clans').orderByChild('tag').equalTo(targetName).once('value');
     targets = snapshot.val();
+  }
+
+  if (!targets) {
+    const clanSnap = await db.ref(`clans/${targetName}`).once('value');
+    if (clanSnap.exists()) {
+      targets = { [targetName]: clanSnap.val() };
+    }
   }
 
   if (!targets) {
@@ -266,6 +293,13 @@ async function infoClan(msg: TelegramBot.Message, args: string[]) {
   if (!targets) {
     snapshot = await db.ref('clans').orderByChild('tag').equalTo(targetName).once('value');
     targets = snapshot.val();
+  }
+
+  if (!targets) {
+    const clanSnap = await db.ref(`clans/${targetName}`).once('value');
+    if (clanSnap.exists()) {
+      targets = { [targetName]: clanSnap.val() };
+    }
   }
 
   if (!targets) {
@@ -1160,8 +1194,58 @@ bot.on('callback_query', async (query) => {
   const data = query.data;
   const msg = query.message;
   if (!msg) return;
+  const userId = query.from.id;
 
-  if (data === 'admin_toggle_bot') {
+  if (data === 'confirm_create_clan') {
+    const pending = pendingClanCreations.get(userId);
+    if (!pending) {
+      bot.answerCallbackQuery(query.id, { text: 'Действие устарело.' });
+      return;
+    }
+
+    const { name, tag } = pending;
+    pendingClanCreations.delete(userId);
+
+    const clanId = db.ref('clans').push().key!;
+    
+    await db.ref(`clans/${clanId}`).set({
+      name,
+      tag,
+      leaderId: userId,
+      members: { [userId]: { role: 'leader' } },
+      treasury: 0,
+      weapons: 0,
+      capitalHp: 10000,
+      level: 1,
+      experience: 0,
+      populationLimit: 15
+    });
+
+    await updateUser(userId, { clanId, role: 'leader', contribution: 0 });
+
+    bot.editMessageText(`Клан создан! Ты лидер`, {
+      chat_id: msg.chat.id,
+      message_id: msg.message_id,
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '👁️ Мой клан', callback_data: 'view_my_clan' }]
+        ]
+      }
+    });
+    bot.answerCallbackQuery(query.id);
+  } else if (data === 'cancel_create_clan') {
+    pendingClanCreations.delete(userId);
+    bot.editMessageText('Создание клана отменено.', {
+      chat_id: msg.chat.id,
+      message_id: msg.message_id
+    });
+    bot.answerCallbackQuery(query.id);
+  } else if (data === 'view_my_clan') {
+    // Call myClan logic here, but we need to pass a message object.
+    // We can just call myClan with a mock message or refactor myClan.
+    await myClan({ ...msg, from: query.from } as TelegramBot.Message);
+    bot.answerCallbackQuery(query.id);
+  } else if (data === 'admin_toggle_bot') {
     const snap = await db.ref('settings/bot_disabled').once('value');
     const disabled = snap.val();
     await db.ref('settings/bot_disabled').set(!disabled);
