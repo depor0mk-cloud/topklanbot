@@ -133,6 +133,24 @@ bot.on('message', async (msg) => {
       bot.sendMessage(msg.chat.id, 'Календарь в разработке.');
     } else if (cmd === '/omg2105' && isAdmin) {
       await adminPanel(msg);
+    } else if (cmd === '/удалить' && args[1] === 'клан') {
+      await deleteClan(msg);
+    } else if (cmd === '/перемирие') {
+      await truce(msg, args.slice(1));
+    } else if (cmd === '/аннексия') {
+      await annex(msg, args.slice(1));
+    } else if (cmd === '/ультиматум') {
+      await ultimatum(msg, args.slice(1));
+    } else if (cmd === '/предложить' && args[1] === 'альянс') {
+      await proposeAlliance(msg, args.slice(2));
+    } else if (cmd === '/разорвать' && args[1] === 'альянс') {
+      await breakAlliance(msg, args.slice(2));
+    } else if (cmd === '/вкл2105' && isAdmin) {
+      await db.ref('settings/bot_disabled').set(false);
+      bot.sendMessage(msg.chat.id, 'Бот включен.');
+    } else if (cmd === '/выкл2105' && isAdmin) {
+      await db.ref('settings/bot_disabled').set(true);
+      bot.sendMessage(msg.chat.id, 'Бот выключен.');
     }
     // Add other commands as needed
   } catch (e) {
@@ -1159,6 +1177,117 @@ async function rocketLaunch(msg: TelegramBot.Message, args: string[]) {
   if ((targetClan.capitalHp || 10000) - damage <= 0) {
     bot.sendMessage(msg.chat.id, `Столица клана ${targetName} уничтожена!`);
   }
+}
+
+async function deleteClan(msg: TelegramBot.Message) {
+  const userId = msg.from!.id;
+  const user = await getUser(userId);
+
+  if (!user || !user.clanId || user.role !== 'leader') {
+    bot.sendMessage(msg.chat.id, 'Только лидер может удалить клан.');
+    return;
+  }
+
+  const clan = await getClan(user.clanId);
+  const members = Object.keys(clan.members || {});
+
+  for (const memberId of members) {
+    await db.ref(`users/${memberId}/clanId`).remove();
+    await db.ref(`users/${memberId}/role`).remove();
+  }
+
+  await db.ref(`clans/${user.clanId}`).remove();
+  bot.sendMessage(msg.chat.id, 'Клан успешно удален.');
+}
+
+async function truce(msg: TelegramBot.Message, args: string[]) {
+  const userId = msg.from!.id;
+  const user = await getUser(userId);
+
+  if (!user || !user.clanId || user.role !== 'leader') {
+    bot.sendMessage(msg.chat.id, 'Только лидер может предлагать перемирие.');
+    return;
+  }
+
+  const targetName = args.join(' ');
+  if (!targetName) {
+    bot.sendMessage(msg.chat.id, 'Укажите название клана.');
+    return;
+  }
+
+  bot.sendMessage(msg.chat.id, `Вы предложили перемирие клану ${targetName}. Ожидайте ответа.`);
+}
+
+async function annex(msg: TelegramBot.Message, args: string[]) {
+  const userId = msg.from!.id;
+  const user = await getUser(userId);
+
+  if (!user || !user.clanId || user.role !== 'leader') {
+    bot.sendMessage(msg.chat.id, 'Только лидер может аннексировать кланы.');
+    return;
+  }
+
+  const targetName = args.join(' ');
+  if (!targetName) {
+    bot.sendMessage(msg.chat.id, 'Укажите название клана.');
+    return;
+  }
+
+  bot.sendMessage(msg.chat.id, `Вы начали процесс аннексии клана ${targetName}.`);
+}
+
+async function ultimatum(msg: TelegramBot.Message, args: string[]) {
+  const userId = msg.from!.id;
+  const user = await getUser(userId);
+
+  if (!user || !user.clanId || user.role !== 'leader') {
+    bot.sendMessage(msg.chat.id, 'Только лидер может выдвигать ультиматумы.');
+    return;
+  }
+
+  const targetName = args.join(' ');
+  if (!targetName) {
+    bot.sendMessage(msg.chat.id, 'Укажите название клана.');
+    return;
+  }
+
+  bot.sendMessage(msg.chat.id, `Вы выдвинули ультиматум клану ${targetName}.`);
+}
+
+async function proposeAlliance(msg: TelegramBot.Message, args: string[]) {
+  const userId = msg.from!.id;
+  const user = await getUser(userId);
+
+  if (!user || !user.clanId || user.role !== 'leader') {
+    bot.sendMessage(msg.chat.id, 'Только лидер может предлагать альянс.');
+    return;
+  }
+
+  const targetName = args.join(' ');
+  if (!targetName) {
+    bot.sendMessage(msg.chat.id, 'Укажите название клана.');
+    return;
+  }
+
+  bot.sendMessage(msg.chat.id, `Вы предложили альянс клану ${targetName}.`);
+}
+
+async function breakAlliance(msg: TelegramBot.Message, args: string[]) {
+  const userId = msg.from!.id;
+  const user = await getUser(userId);
+
+  if (!user || !user.clanId || user.role !== 'leader') {
+    bot.sendMessage(msg.chat.id, 'Только лидер может разрывать альянсы.');
+    return;
+  }
+
+  const targetName = args.join(' ');
+  if (!targetName) {
+    bot.sendMessage(msg.chat.id, 'Укажите название клана.');
+    return;
+  }
+
+  bot.sendMessage(msg.chat.id, `Вы разорвали альянс с кланом ${targetName}.`);
 }
 
 async function adminPanel(msg: TelegramBot.Message) {
