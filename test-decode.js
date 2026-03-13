@@ -1,9 +1,4 @@
-import admin from 'firebase-admin';
-
-const rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY 
-  ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-  : `-----BEGIN PRIVATE KEY-----
-MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDOhqXZpqS6nb1T
+const key = `MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDOhqXZpqS6nb1T
 OeFEqo44AivSsmRChCrh11MZ9ofyaKqPJvHNeZRSiiFdjO8FvdqOxJnUz+dB0HSy
 6rUrx6+JuyInU3dh+fJPMulf8D83odnDV8oA8dvHLck6VMieKz45Wap4ypeqc6B+
 lnu3F9dAPl3Pmjzzb+nVS+c4vggSio6fd9DVua/fMiOVtC5cXUhjwst4pz1sieDf
@@ -28,21 +23,7 @@ LgN69fv8UlNPtap1+FEHq2sLLRPls5QZwnrqSiWXMdJNOxOqnt+LhxIN24/TsbBV
 btOmbN9KrdebnaioBLF31KW86eAEZIdKOmKiGqECgYBPTUUqwSt/XjhTAluZ0NGv
 E/RqthzazKCv7lbq93uNak3vUuxzFSFRq+FDe2mAI4Rcm3zHY81XSEC8MPZ8vgP4
 NSQEaf3jH8fai+20nj6Kzkg6dGARHtUoThPTOmde9cvONge2+qQBm2HUrpCwAxwH
-Bn+wtsxmTo0MWADhgTwyaw==
------END PRIVATE KEY-----`;
+Bn+wtsxmTo0MWADhgTwyaw==`.replace(/\n/g, '');
 
-const serviceAccount = {
-  projectId: "boevik-1e8c3",
-  clientEmail: "firebase-adminsdk-fbsvc@boevik-1e8c3.iam.gserviceaccount.com",
-  privateKey: rawPrivateKey,
-};
-
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://boevik-1e8c3-default-rtdb.europe-west1.firebasedatabase.app/"
-  });
-}
-
-export const db = admin.database();
-export const firestore = admin.firestore(); // Just in case, but user specified RTDB URL
+const buf = Buffer.from(key, 'base64');
+console.log("Length in bytes:", buf.length);

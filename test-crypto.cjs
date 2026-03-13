@@ -1,8 +1,6 @@
-import admin from 'firebase-admin';
+const crypto = require('crypto');
 
-const rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY 
-  ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-  : `-----BEGIN PRIVATE KEY-----
+const key = `-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDOhqXZpqS6nb1T
 OeFEqo44AivSsmRChCrh11MZ9ofyaKqPJvHNeZRSiiFdjO8FvdqOxJnUz+dB0HSy
 6rUrx6+JuyInU3dh+fJPMulf8D83odnDV8oA8dvHLck6VMieKz45Wap4ypeqc6B+
@@ -31,18 +29,9 @@ NSQEaf3jH8fai+20nj6Kzkg6dGARHtUoThPTOmde9cvONge2+qQBm2HUrpCwAxwH
 Bn+wtsxmTo0MWADhgTwyaw==
 -----END PRIVATE KEY-----`;
 
-const serviceAccount = {
-  projectId: "boevik-1e8c3",
-  clientEmail: "firebase-adminsdk-fbsvc@boevik-1e8c3.iam.gserviceaccount.com",
-  privateKey: rawPrivateKey,
-};
-
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://boevik-1e8c3-default-rtdb.europe-west1.firebasedatabase.app/"
-  });
+try {
+  crypto.createPrivateKey(key);
+  console.log("Success");
+} catch (e) {
+  console.error(e);
 }
-
-export const db = admin.database();
-export const firestore = admin.firestore(); // Just in case, but user specified RTDB URL
