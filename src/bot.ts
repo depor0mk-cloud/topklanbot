@@ -153,9 +153,9 @@ bot.on('message', async (msg) => {
       bot.sendMessage(msg.chat.id, 'Бот выключен.');
     }
     // Add other commands as needed
-  } catch (e) {
+  } catch (e: any) {
     console.error(e);
-    bot.sendMessage(msg.chat.id, 'Произошла ошибка при выполнении команды.');
+    bot.sendMessage(msg.chat.id, `Произошла ошибка при выполнении команды: ${e.message}`);
   }
 });
 
